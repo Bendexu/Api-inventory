@@ -1,0 +1,41 @@
+Create database Proyecto
+
+create table Usuario(
+	dni int PRIMARY KEY,
+	nombre varchar(100),
+	apellido varchar (100),
+	edad int not null,
+	correo varchar (100),
+	contrasena varchar (100)
+);
+
+create table producto(
+	id_producto SERIAL PRIMARY KEY,
+	codigo int not null,
+	nombre varchar(100),
+	stock int,
+	precio int
+);
+
+ALTER TABLE Usuario
+DROP COLUMN id_usuario;
+
+
+instalar el cliente de PostgreSQL para Node.js
+npm install pg pg-pool
+
+Asi se agrego a los usuarios y productos:
+{
+    "dni": 12385496,
+    "nombre": "Javier",
+    "apellido": "Torres",
+    "edad": 18,
+    "correo": "javiertorrese@gmail.com",
+    "contrasena": "jeje496"
+    }
+{
+    "codigo": 100002,
+    "nombre": "Mandarina",
+    "stock": 9,
+    "precio": 1
+    }

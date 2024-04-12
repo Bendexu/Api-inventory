@@ -1,0 +1,6 @@
+Login (email y password)    ---------------------------------- LISTO
+Buscar usuarios por DNI     ---------------------------------- LISTO
+Crear productos.      ---------------------------------------- LISTO
+Buscar productos por codigo  --------------------------------- LISTO
+Buscar productos por Nombre que coincidan  ------------------- LISTO
+Borrar productos por codigo (DELETE)  ------------------------ LISTO
