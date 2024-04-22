@@ -1,26 +1,70 @@
-import { Request, Response, request } from 'express';
+import { Request, Response } from 'express';
 import pool from '../../database.config';
-export const CrearProducto = async (request: Request, response: Response) => {
-    const {
-        codigo,
-        nombre,
-        stock,
-        precio
-    } = request.body;
+import multer from 'multer';
+import fs from 'fs';
 
-    try {
-        const result = await pool.query(
-            'INSERT INTO producto (codigo, nombre, stock, precio) VALUES ($1, $2, $3, $4) RETURNING *',
-            [codigo, nombre, stock, precio]
-        );
-
-        const ProductoAgregado = result.rows[0];
-        return response.status(201).json(ProductoAgregado);
-    } catch (error) {
-        console.error('Error al agregar Producto:', error);
-        return response.status(500).json({ message: 'Error interno del servidor' });
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/');
     }
+});
+
+const upload = multer({ storage: storage }).single('imagen');
+
+function Saveimagen(file) {
+    const newPath = `./uploads/${file.originalname}`; 
+    fs.renameSync(file.path, newPath);
+    return newPath; 
 }
+
+export const CrearProducto = async (request: Request, response: Response) => {
+    upload(request, response, async function (err) {
+        if (err) {
+            console.error('Error al cargar la imagen', err);
+            return response.status(500).json({ message: 'Error al cargar la imagen' });
+        }
+        try {
+            const {
+                codigo,
+                nombre,
+                detalles,
+                stock,
+                precio
+            } = request.body;
+
+            const imagenName = request.file.originalname ;
+
+            const newPath = Saveimagen(request.file);
+
+            // Verifica si se proporcionaron todos los campos requeridos
+            if (!codigo || !nombre || !detalles || !stock || !precio) {
+                return response.status(400).json({ message: 'Todos los campos son obligatorios' });
+            }
+
+            // Inserta el producto en la base de datos
+            const result = await pool.query(
+                'INSERT INTO producto (codigo, nombre, detalles, stock, precio, imagen) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+                [codigo, nombre, detalles, stock, precio, imagenName]
+            );
+
+            // Verifica si se insertó correctamente el producto
+            if (result.rows.length === 0) {
+                return response.status(500).json({ message: 'Error al agregar el producto' });
+            }
+
+            // Obtiene el producto recién agregado
+            const productoAgregado = result.rows[0];
+            return response.status(201).json(productoAgregado);
+        } catch (error) {
+            console.error('Error al agregar Producto:', error);
+            if (error.code === '23505') { // Verifica si hay una violación de restricción de clave única
+                return response.status(400).json({ message: 'Ya existe un producto con este código' });
+            }
+            return response.status(500).json({ message: 'Error interno del servidor' });
+        }
+    });
+};
+
 
 export const EliminarProducto = async (request: Request, response: Response) => {
     const codigoProducto = request.params.codigo; // Obtener el código del producto desde los parámetros de la solicitud
@@ -29,14 +73,69 @@ export const EliminarProducto = async (request: Request, response: Response) => 
             'DELETE FROM producto   WHERE codigo = $1', // Utilizar el código del producto en lugar del ID en la consulta SQL
             [codigoProducto]
         );
-
-        return response.status(200).json({ message: 'Producto eliminado correctamente' });
+        const EliminarProducto = result.rows[0];
+        return response.status(201).json(EliminarProducto);
     } catch (error) {
         console.error('Error al eliminar producto:', error);
         return response.status(500).json({ message: 'Error interno del servidor' });
     }
 };
 
+export const EditarProducto = async (request: Request, response: Response) => {
+    const { codigo, nombre, stock, precio } = request.body;
+
+    try {
+        const result = await pool.query(
+            'UPDATE producto SET nombre = $1, stock = $2, precio = $3 WHERE codigo = $4',
+            [nombre, stock, precio, codigo]
+        );
+        if (result.rowCount === 0) {
+            return response.status(404).json({ message: 'No se encontró ningún producto para actualizar' });
+        }
+        return response.status(200).json({ message: 'Producto actualizado correctamente' });
+    } catch (error) {
+        console.error('Error al editar producto:', error);
+        return response.status(500).json({ message: 'Error interno del servidor' });
+    }
+};
+
+export const filtrarProducto = async (request: Request, response: Response) => {
+    const { codigo, nombre } = request.query;
+    try {
+        let result;
+        let queryParams = [];
+
+        if (codigo && nombre) {
+            queryParams = [codigo, `%${nombre}%`];
+            result = await pool.query(
+                'SELECT * FROM producto WHERE codigo = $1 AND nombre ILIKE $2',
+                queryParams
+            );
+        } else if (codigo) {
+            queryParams = [codigo];
+            result = await pool.query(
+                'SELECT * FROM producto WHERE codigo = $1',
+                queryParams
+            );
+        } else if (nombre) {
+            queryParams = [`%${nombre}%`];
+            result = await pool.query(
+                'SELECT * FROM producto WHERE nombre ILIKE $1',
+                queryParams
+            );
+        } else {
+            result = await pool.query(
+                'SELECT * FROM producto'
+            );
+        }
+
+        const productos = result.rows;
+        return response.status(200).json(productos);
+    } catch (error) {
+        console.error('Error al obtener productos:', error);
+        return response.status(500).json({ message: 'Error interno del servidor' });
+    }
+};
 
 export const BuscarCodigoProducto = async (request: Request, response: Response) => {
     const idProducto = request.params.id;
@@ -87,22 +186,6 @@ export const ObtenerProductos = async (request: Request, response: Response) => 
         return response.status(200).json(productos);
     } catch (error) {
         console.error('Error al obtener productos:', error);
-        return response.status(500).json({ message: 'Error interno del servidor' });
-    }
-};
-
-export const EditarProducto = async (request: Request, response: Response) => {
-    const { codigo, nombre, stock, precio } = request.body;
-
-    try {
-        const result = await pool.query(
-            'UPDATE producto SET nombre = $2, stock = $3, precio = $4 WHERE codigo = $1',
-            [codigo, nombre, stock, precio]
-        );
-
-        return response.status(200).json({ message: 'Producto actualizado correctamente' });
-    } catch (error) {
-        console.error('Error al editar producto:', error);
         return response.status(500).json({ message: 'Error interno del servidor' });
     }
 };

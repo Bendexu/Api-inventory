@@ -4,6 +4,10 @@ import bodyParser from 'body-parser';
 import { ProductoRuta } from './routes/producto.route';
 import pool from '../database.config';
 import cors from 'cors';
+
+
+
+
 function appInit() {
     //Inicializamos Init express
     const app = express();
@@ -16,7 +20,11 @@ function appInit() {
     //Uso de un Usuario Ruta
     app.use(UsuarioRuta);
     app.use(ProductoRuta);
-
+    
+   
+    // Ruta para cargar una imagen
+    app.use('/uploads', express.static('uploads'));
+    
     //Que la aplicación solo escuche el puerto 3000
     app.listen(3000);
     console.log('Server running on port http://localhost:3000');
