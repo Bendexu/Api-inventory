@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Request, Response, request, response } from 'express';
 import pool from '../../database.config';
 import multer from 'multer';
 import fs from 'fs';
@@ -189,3 +189,162 @@ export const ObtenerProductos = async (request: Request, response: Response) => 
         return response.status(500).json({ message: 'Error interno del servidor' });
     }
 };
+
+export const ObtenerLogs = async (request: Request, response: Response) => {
+    try {
+        const result = await pool.query(
+            'SELECT p.nombre, l.* FROM logs l JOIN producto p ON l.codigo_producto = p.codigo'
+        );
+
+        const productos = result.rows;
+        return response.status(200).json(productos);
+    } catch (error) {
+        console.error('Error al obtener productos:', error);
+        return response.status(500).json({ message: 'Error interno del servidor' });
+    }
+};
+
+export const AgregarStockProducto = async (request: Request, response: Response) => {
+    try {
+        const { codigo, cantidad, detalles } = request.body;
+
+        if (!codigo || !cantidad || typeof cantidad !== 'number') {
+            return response.status(400).json({ message: 'Todos los campos son obligatorios y cantidad debe ser un número' });
+        }
+
+        const producto = await pool.query('SELECT * FROM producto WHERE codigo = $1', [codigo]);
+        if (producto.rows.length === 0) {
+            return response.status(404).json({ message: 'Producto no encontrado' });
+        }
+
+        await pool.query(
+            'UPDATE producto SET stock = stock + $1 WHERE codigo = $2',
+            [cantidad, codigo]
+        );
+
+        await pool.query(
+            'INSERT INTO logs (codigo_producto, tipo_movimiento, cantidad, detalles) VALUES ($1, $2, $3, $4)',
+            [codigo, 'agregar_stock', cantidad, detalles]
+        );
+
+        return response.status(201).json({ message: 'Stock agregado correctamente' });
+    } catch (error) {
+        console.error('Error al agregar stock a producto:', error);
+        return response.status(500).json({ message: 'Error interno del servidor' });
+    }
+};
+
+export const QuitarStockProducto = async (request: Request, response: Response) => {
+    try {
+        const { codigo, cantidad, detalles } = request.body;
+
+        if (!codigo || !cantidad || typeof cantidad !== 'number') {
+            return response.status(400).json({ message: 'Todos los campos son obligatorios y cantidad debe ser un número' });
+        }
+
+        const producto = await pool.query('SELECT * FROM producto WHERE codigo = $1', [codigo]);
+        if (producto.rows.length === 0) {
+            return response.status(404).json({ message: 'Producto no encontrado' });
+        }
+
+        await pool.query(
+            'UPDATE producto SET stock = CASE WHEN stock - $1 < 0 THEN 0 ELSE stock - $1 END WHERE codigo = $2',
+            [cantidad, codigo]
+        );
+
+        await pool.query(
+            'INSERT INTO logs (codigo_producto, tipo_movimiento, cantidad, detalles) VALUES ($1, $2, $3, $4)',
+            [codigo, 'quitar_stock', cantidad, detalles]
+        );
+
+        return response.status(201).json({ message: 'Stock quitado correctamente' });
+    } catch (error) {
+        console.error('Error al quitar stock a producto:', error);
+        return response.status(500).json({ message: 'Error interno del servidor' });
+    }
+};
+
+export const BuscarProducto = async (request: Request, response: Response) => {
+    try {
+        const { codigo, nombre } = request.query;
+
+        let result;
+        let queryParams = [];
+
+        // Verifica si se proporcionó un código y/o un nombre para buscar el producto
+        if (codigo && nombre) {
+            queryParams = [codigo, `%${nombre}%`];
+            result = await pool.query(
+                'SELECT codigo, nombre FROM producto WHERE codigo = $1 AND nombre ILIKE $2',
+                queryParams
+            );
+        } else if (codigo) {
+            queryParams = [codigo];
+            result = await pool.query(
+                'SELECT codigo, nombre FROM producto WHERE codigo = $1',
+                queryParams
+            );
+        } else if (nombre) {
+            queryParams = [`%${nombre}%`];
+            result = await pool.query(
+                'SELECT codigo, nombre FROM producto WHERE nombre ILIKE $1',
+                queryParams
+            );
+        } else {
+            // Si no se proporciona ni código ni nombre, devuelve un mensaje de error
+            return response.status(400).json({ message: 'Debe proporcionar al menos el código o el nombre del producto' });
+        }
+
+        const productos = result.rows;
+        return response.status(200).json(productos);
+    } catch (error) {
+        console.error('Error al buscar productos:', error);
+        return response.status(500).json({ message: 'Error interno del servidor' });
+    }
+};
+
+export const filtrarLogs = async (request: Request, response: Response) => {
+    const { fecha_movimiento, tipo_movimiento } = request.query;
+    try {
+        let result;
+        let queryParams = [];
+
+        if (fecha_movimiento && tipo_movimiento) {
+            const tipoMovimientoLower = String(tipo_movimiento).toLowerCase();
+            queryParams = [`%${tipoMovimientoLower}%`, fecha_movimiento];
+            result = await pool.query(
+                'SELECT p.nombre, l.* FROM logs l JOIN producto p ON l.codigo_producto = p.codigo WHERE LOWER(l.tipo_movimiento) LIKE $1 AND l.fecha_movimiento = $2',
+                queryParams
+            );
+        } else if (tipo_movimiento) {
+            const tipoMovimientoLower = String(tipo_movimiento).toLowerCase();
+            queryParams = [`%${tipoMovimientoLower}%`];
+            result = await pool.query(
+                'SELECT p.nombre, l.* FROM logs l JOIN producto p ON l.codigo_producto = p.codigo WHERE LOWER(l.tipo_movimiento) LIKE $1',
+                queryParams
+            );
+        } else if (fecha_movimiento) {
+            const fechaMovimientoString = String(fecha_movimiento);
+            queryParams = [`%${fechaMovimientoString}%`];
+            result = await pool.query(
+                'SELECT p.nombre, l.* FROM logs l JOIN producto p ON l.codigo_producto = p.codigo WHERE CAST(l.fecha_movimiento AS VARCHAR) LIKE $1',
+                queryParams
+            );
+        } else {
+            result = await pool.query(
+                'SELECT p.nombre, l.* FROM logs l JOIN producto p ON l.codigo_producto = p.codigo'
+            );
+        }
+
+        const logs = result.rows;
+        return response.status(200).json(logs);
+    } catch (error) {
+        console.error('Error al obtener logs:', error);
+        return response.status(500).json({ message: 'Error interno del servidor' });
+    }
+};
+
+
+
+
+
